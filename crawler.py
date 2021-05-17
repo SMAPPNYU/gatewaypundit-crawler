@@ -10,14 +10,13 @@ import json
 import os
 from datetime import datetime, timedelta
 import zipfile
-import mysql.connector
 import glob
 import pandas as pd
 import gzip
 
+# TODO: update CHROME_DRIVER_PATH, and DOWNLOAD_PATH to your own variables
 DRIVER_PATH = os.getenv('CHROME_DRIVER_PATH')
 DOWNLOAD_PATH = '/data/zc1245/gateway_crawl/new_log_endpoint_03052021/'
-
 
 # reference: https://stackoverflow.com/questions/34338897/python-selenium-find-out-when-a-download-has-completed
 def download_wait(directory, timeout, nfiles=None):
@@ -56,96 +55,6 @@ def get_csv_file():
     if len(files) > 1:
         print('too many csvs -- got {} files'.format(len(files)))
     return sorted(files, reverse=True)[0]
-
-
-def transform_csv_to_mysql(filename):
-    print('current filename is {}'.format(filename))
-
-    df_example = pd.read_csv(filename, index_col=False, sep=',', encoding = "ISO-8859-1", quotechar='"', error_bad_lines=False, engine='python')
-    df_example = df_example.where(pd.notnull(df_example), None)
-
-    USER = 'root'
-    PASSWORD = 'csmap'
-    HOST = 'localhost'
-    PORT = '3306'
-    DATABASE = 'webtraffic'
-
-    SELECT_QUERY = 'SELECT count(*) FROM gateway_02032021 LIMIT 10'
-    UPDATE_QUERY = """
-      INSERT IGNORE INTO gateway_02032021
-      (date_and_time,
-      browser, 
-      os, 
-      resolution, 
-      ip_address, 
-      version,
-      country,
-      region,
-      city,
-      postal_code,
-      isp,
-      type,
-      page_title,
-      url,
-      came_from, 
-      returning_count) 
-      VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-      """
-
-    # establish the connection
-    cnx = mysql.connector.connect(user=USER, password=PASSWORD,
-                                  host=HOST,
-                                  port=PORT,
-                                  database=DATABASE, 
-                                  charset='utf8',
-                                  use_unicode=True)
-    cursor = cnx.cursor()
-
-    for index, row in df_example.iterrows():
-        try:
-            cursor.execute(UPDATE_QUERY,
-                       (row['Date and Time'], row['Browser'], row['OS'], row['Resolution'],
-                        row['IP Address'], row['Version'], row['Country'], 
-                        row['Region'], row['City'], row['Postal Code'], row['ISP'], 
-                        row['Type'], row['Page Title'], row['URL'],
-                        row['Came From'], row['Returning Count'])
-                      )
-        except Exception as e:
-            print('[Mysql execute Exceptionn!!]')
-            print(e)
-            pass
-
-        """NOTE: 
-               To minimize disk I/O operation, we only write to the disk for every 1000 records    
-
-               Execute and commit are very different, see more here
-               https://dev.mysql.com/doc/connector-python/en/connector-python-example-cursor-transaction.html
-        """
-        if index % 1000 == 0:
-            cnx.commit()
-            print("index {} || {} record(s) affected".format(index, cursor.rowcount))
-
-
-    # commit last batch of records from the for loop
-    cnx.commit()
-
-    # close the connection
-    cursor.close()
-    cnx.close()
-    
-    # zip the file after the transformation
-    # zipfile.ZipFile(filename.replace('.csv', '.zip'), mode='w', compression=zipfile.ZIP_DEFLATED).write(filename)
-    print('convert to gz')
-   
-    with open(filename, 'rb') as f_in, gzip.open(filename.replace('.csv', '.gz'), 'wb') as f_out:
-        f_out.writelines(f_in)
-    print('remove .csv file') 
-    try:
-        os.remove(filename)
-    except OSError:
-        print('cannot remove the file!')
-        pass
-    return
 
 
 def main_crawler():
@@ -210,17 +119,21 @@ def main_crawler():
             log_url = 'https://statcounter.com/p9449268/csv/download_log_file?range={}--{}'.format(start_time, end_time)
             print(log_url)
             driver.get(log_url)
-            #driver.get('https://statcounter.com/p9449268/pageload/?csv')
             
             # wait for download to finish, 6 minutes 
             time.sleep(60 * 6)
-            #download_wait(directory=DOWNLOAD_PATH, timeout=60, nfiles=None)
             num_files += 1
+            
+            # convert csv file to gzip to save space
+            with open(filename, 'rb') as f_in, gzip.open(filename.replace('.csv', '.gz'), 'wb') as f_out:
+                f_out.writelines(f_in)
+
+            print('convert .csv to .gz, and remove .csv file')
             try:
-                transform_csv_to_mysql(get_csv_file())
-            except Exception as e:
-                print(e)
-                pass
+                os.remove(filename)
+            except OSError:
+                print('cannot remove the file!')
+                
             # wait for remaining seconds (15min - time elapsed)
             time_elapsed = (datetime.now() - time_now).total_seconds()
             time_remaining = 60 * 15 - time_elapsed
