@@ -16,8 +16,6 @@ import pandas as pd
 import gzip
 
 DRIVER_PATH = os.getenv('CHROME_DRIVER_PATH')
-usr=os.getenv('FACEBOOK_USER')
-pwd=os.getenv('FACEBOOK_PASSWORD')
 DOWNLOAD_PATH = '/data/zc1245/gateway_crawl/new_log_endpoint_03052021/'
 
 
@@ -150,7 +148,7 @@ def transform_csv_to_mysql(filename):
     return
 
 
-def extract_cookie():
+def main_crawler():
     driver = None
     broswer_log = 'chrome_browser.log'
     try: 
@@ -253,7 +251,7 @@ if __name__ == '__main__':
     
     # use the new endpoint to download log
     # transform_csv_to_mysql(get_csv_file())
-    extract_cookie()
+    main_crawler()
     exit(0) 
 
     # datetime object containing current date and time
